@@ -162,12 +162,37 @@ class Database(local, NodeClassRegistry):
                     resolved_object = a_result_attribute[1]
                     
                     if type(a_result_attribute[1]) is Node:
-                        resolved_object = self._NODE_CLASS_REGISTRY[frozenset(a_result_attribute[1].labels)].inflate(
-                            a_result_attribute[1])
+                        labels_on_node = frozenset(a_result_attribute[1].labels)
+
+                        # First try to find exact label match
+                        matching_class = self._NODE_CLASS_REGISTRY.get(labels_on_node)
                         
+                        if matching_class is None:
+                            # If exact label match fails, find Node Class with the most labels
+                            # in common with node. Node instance labels must match ALL labels
+                            # on class
+                            matching_class, matching_label_count = None, 0
+
+                            for node_class_labels in self._NODE_CLASS_REGISTRY.keys():
+                                intersecting_labels = labels_on_node.intersection(set(node_class_labels))
+                                if (
+                                    labels_on_node.issuperset(node_class_labels) and
+                                    len(intersecting_labels) > matching_label_count
+                                ):
+                                    matching_class = self._NODE_CLASS_REGISTRY[node_class_labels]
+                                    matching_label_count = len(intersecting_labels)
+
+                            if matching_class is None:
+                                raise ModelDefinitionMismatch(
+                                    a_result_attribute[1],
+                                    self._NODE_CLASS_REGISTRY
+                                )
+
+                        resolved_object = matching_class.inflate(a_result_attribute[1])
+
                     if type(a_result_attribute[1]) is list:
                         resolved_object = self._object_resolution([a_result_attribute[1]])                    
-                    
+
                     result_list[a_result_item[0]][a_result_attribute[0]] = resolved_object
                     
                 except KeyError:
